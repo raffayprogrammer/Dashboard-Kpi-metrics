@@ -51,8 +51,9 @@ renders a "Could not connect to the database" message instead of crashing.
 - Set `DATABASE_URL` to a standard Postgres connection string:
   `postgresql://<user>:<password>@<host>:<port>/<database>`.
 - For managed providers (Neon, Supabase, RDS, etc.) that require TLS, append
-  `?sslmode=require` — the app automatically enables SSL for any non-`localhost`
-  host (see `src/lib/db.ts`).
+  `?sslmode=require` to the connection string — the app only enables SSL when
+  that's present (see `src/lib/db.ts`). Self-hosted or tunneled Postgres
+  (e.g. via ngrok) typically has no SSL listener, so omit it in that case.
 - The connection is pooled via a single `pg.Pool` (max 5 connections),
   cached on `globalThis` in development so hot-reloading doesn't leak
   connections, and reused per warm serverless instance in production.

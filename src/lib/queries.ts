@@ -20,34 +20,72 @@ import type {
 // so the dashboard is viewable immediately instead of erroring out.
 export const isMockMode = () => !process.env.DATABASE_URL;
 
+// Postgres error code 42703 = undefined_column. The reply-tracking columns
+// (replied_at / reply_intent / reply_text / reply_step) are part of Phase 6
+// and may not exist on `contacts` yet in a given environment — when that's
+// the case, treat it the same as "Phase 6 hasn't run" rather than a crash.
+function isUndefinedColumnError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "42703"
+  );
+}
+
 export async function getOverviewMetrics(): Promise<OverviewMetrics> {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.overview;
-  const { rows } = await getPool().query<OverviewMetrics>(`
-    SELECT
-      COUNT(DISTINCT se.contact_id) AS total_sent,
-      COUNT(DISTINCT CASE WHEN c.replied_at IS NOT NULL
-        THEN c.contact_id END) AS total_replies,
-      COUNT(DISTINCT CASE WHEN c.reply_intent = 'positive'
-        THEN c.contact_id END) AS positive_replies,
-      COUNT(DISTINCT CASE WHEN c.reply_intent = 'unsubscribe'
-        THEN c.contact_id END) AS unsubscribes,
-      COUNT(DISTINCT CASE WHEN se.current_step = 5 AND se.status = 'finished'
-        THEN se.contact_id END) AS completed_sequence,
-      ROUND(
-        100.0 * COUNT(DISTINCT CASE WHEN c.replied_at IS NOT NULL
-          THEN c.contact_id END)
-        / NULLIF(COUNT(DISTINCT se.contact_id), 0), 2
-      ) AS reply_rate_pct,
-      ROUND(
-        100.0 * COUNT(DISTINCT CASE WHEN c.reply_intent = 'positive'
-          THEN c.contact_id END)
-        / NULLIF(COUNT(DISTINCT CASE WHEN c.replied_at IS NOT NULL
-          THEN c.contact_id END), 0), 2
-      ) AS positive_rate_pct
-    FROM sequence_enrollments se
-    JOIN contacts c ON c.contact_id = se.contact_id;
-  `);
-  return rows[0];
+  try {
+    const { rows } = await getPool().query<OverviewMetrics>(`
+      SELECT
+        COUNT(DISTINCT se.contact_id) AS total_sent,
+        COUNT(DISTINCT CASE WHEN c.replied_at IS NOT NULL
+          THEN c.contact_id END) AS total_replies,
+        COUNT(DISTINCT CASE WHEN c.reply_intent = 'positive'
+          THEN c.contact_id END) AS positive_replies,
+        COUNT(DISTINCT CASE WHEN c.reply_intent = 'unsubscribe'
+          THEN c.contact_id END) AS unsubscribes,
+        COUNT(DISTINCT CASE WHEN se.current_step = 5 AND se.status = 'finished'
+          THEN se.contact_id END) AS completed_sequence,
+        ROUND(
+          100.0 * COUNT(DISTINCT CASE WHEN c.replied_at IS NOT NULL
+            THEN c.contact_id END)
+          / NULLIF(COUNT(DISTINCT se.contact_id), 0), 2
+        ) AS reply_rate_pct,
+        ROUND(
+          100.0 * COUNT(DISTINCT CASE WHEN c.reply_intent = 'positive'
+            THEN c.contact_id END)
+          / NULLIF(COUNT(DISTINCT CASE WHEN c.replied_at IS NOT NULL
+            THEN c.contact_id END), 0), 2
+        ) AS positive_rate_pct
+      FROM sequence_enrollments se
+      JOIN contacts c ON c.contact_id = se.contact_id;
+    `);
+    return rows[0];
+  } catch (error) {
+    if (!isUndefinedColumnError(error)) throw error;
+    // Reply columns don't exist yet — total_sent/completed_sequence don't
+    // depend on them, so recover those from sequence_enrollments alone.
+    const { rows } = await getPool().query<{
+      total_sent: number;
+      completed_sequence: number;
+    }>(`
+      SELECT
+        COUNT(DISTINCT contact_id) AS total_sent,
+        COUNT(DISTINCT CASE WHEN current_step = 5 AND status = 'finished'
+          THEN contact_id END) AS completed_sequence
+      FROM sequence_enrollments;
+    `);
+    return {
+      total_sent: rows[0].total_sent,
+      total_replies: 0,
+      positive_replies: 0,
+      unsubscribes: 0,
+      completed_sequence: rows[0].completed_sequence,
+      reply_rate_pct: null,
+      positive_rate_pct: null,
+    };
+  }
 }
 
 export async function getDailySends(): Promise<DailySend[]> {
@@ -80,43 +118,53 @@ export async function getStepDropoff(): Promise<StepDropoff[]> {
 
 export async function getSegmentPerformance(): Promise<SegmentPerformance[]> {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.segmentPerformance;
-  const { rows } = await getPool().query<SegmentPerformance>(`
-    SELECT
-      c.personalization_payload->>'segment' AS segment,
-      COUNT(*) AS total_sent,
-      COUNT(CASE WHEN c.replied_at IS NOT NULL THEN 1 END) AS replied,
-      ROUND(
-        100.0 * COUNT(CASE WHEN c.replied_at IS NOT NULL THEN 1 END)
-        / NULLIF(COUNT(*), 0), 1
-      ) AS reply_rate_pct,
-      COUNT(CASE WHEN c.reply_intent = 'positive' THEN 1 END) AS positive
-    FROM contacts c
-    JOIN sequence_enrollments se ON se.contact_id = c.contact_id
-    WHERE c.personalization_payload IS NOT NULL
-    GROUP BY segment
-    ORDER BY reply_rate_pct DESC NULLS LAST;
-  `);
-  return rows;
+  try {
+    const { rows } = await getPool().query<SegmentPerformance>(`
+      SELECT
+        c.personalization_payload->>'segment' AS segment,
+        COUNT(*) AS total_sent,
+        COUNT(CASE WHEN c.replied_at IS NOT NULL THEN 1 END) AS replied,
+        ROUND(
+          100.0 * COUNT(CASE WHEN c.replied_at IS NOT NULL THEN 1 END)
+          / NULLIF(COUNT(*), 0), 1
+        ) AS reply_rate_pct,
+        COUNT(CASE WHEN c.reply_intent = 'positive' THEN 1 END) AS positive
+      FROM contacts c
+      JOIN sequence_enrollments se ON se.contact_id = c.contact_id
+      WHERE c.personalization_payload IS NOT NULL
+      GROUP BY segment
+      ORDER BY reply_rate_pct DESC NULLS LAST;
+    `);
+    return rows;
+  } catch (error) {
+    if (!isUndefinedColumnError(error)) throw error;
+    return [];
+  }
 }
 
 export async function getAbPerformance(): Promise<AbPerformance[]> {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.abPerformance;
-  const { rows } = await getPool().query<AbPerformance>(`
-    SELECT
-      c.personalization_payload->>'variant' AS variant,
-      COUNT(*) AS total_sent,
-      COUNT(CASE WHEN c.replied_at IS NOT NULL THEN 1 END) AS replied,
-      ROUND(
-        100.0 * COUNT(CASE WHEN c.replied_at IS NOT NULL THEN 1 END)
-        / NULLIF(COUNT(*), 0), 1
-      ) AS reply_rate_pct
-    FROM contacts c
-    JOIN sequence_enrollments se ON se.contact_id = c.contact_id
-    WHERE c.personalization_payload->>'variant' IS NOT NULL
-    GROUP BY variant
-    ORDER BY variant;
-  `);
-  return rows;
+  try {
+    const { rows } = await getPool().query<AbPerformance>(`
+      SELECT
+        c.personalization_payload->>'variant' AS variant,
+        COUNT(*) AS total_sent,
+        COUNT(CASE WHEN c.replied_at IS NOT NULL THEN 1 END) AS replied,
+        ROUND(
+          100.0 * COUNT(CASE WHEN c.replied_at IS NOT NULL THEN 1 END)
+          / NULLIF(COUNT(*), 0), 1
+        ) AS reply_rate_pct
+      FROM contacts c
+      JOIN sequence_enrollments se ON se.contact_id = c.contact_id
+      WHERE c.personalization_payload->>'variant' IS NOT NULL
+      GROUP BY variant
+      ORDER BY variant;
+    `);
+    return rows;
+  } catch (error) {
+    if (!isUndefinedColumnError(error)) throw error;
+    return [];
+  }
 }
 
 export async function getAiApproval(): Promise<AiApproval> {
@@ -156,36 +204,46 @@ export async function getReplyIntentBreakdown(): Promise<
   ReplyIntentBreakdown[]
 > {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.replyIntentBreakdown;
-  const { rows } = await getPool().query<ReplyIntentBreakdown>(`
-    SELECT
-      COALESCE(reply_intent, 'no_reply') AS intent,
-      COUNT(*) AS count
-    FROM contacts c
-    JOIN sequence_enrollments se ON se.contact_id = c.contact_id
-    GROUP BY reply_intent
-    ORDER BY count DESC;
-  `);
-  return rows;
+  try {
+    const { rows } = await getPool().query<ReplyIntentBreakdown>(`
+      SELECT
+        COALESCE(reply_intent, 'no_reply') AS intent,
+        COUNT(*) AS count
+      FROM contacts c
+      JOIN sequence_enrollments se ON se.contact_id = c.contact_id
+      GROUP BY reply_intent
+      ORDER BY count DESC;
+    `);
+    return rows;
+  } catch (error) {
+    if (!isUndefinedColumnError(error)) throw error;
+    return [];
+  }
 }
 
 export async function getRecentReplies(): Promise<RecentReply[]> {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.recentReplies;
-  const { rows } = await getPool().query<RecentReply>(`
-    SELECT
-      c.first_name,
-      a.company_name,
-      c.email,
-      c.reply_intent,
-      c.reply_text,
-      c.reply_step,
-      c.replied_at
-    FROM contacts c
-    JOIN accounts a ON a.account_id = c.account_id
-    WHERE c.replied_at IS NOT NULL
-    ORDER BY c.replied_at DESC
-    LIMIT 10;
-  `);
-  return rows;
+  try {
+    const { rows } = await getPool().query<RecentReply>(`
+      SELECT
+        c.first_name,
+        a.company_name,
+        c.email,
+        c.reply_intent,
+        c.reply_text,
+        c.reply_step,
+        c.replied_at
+      FROM contacts c
+      JOIN accounts a ON a.account_id = c.account_id
+      WHERE c.replied_at IS NOT NULL
+      ORDER BY c.replied_at DESC
+      LIMIT 10;
+    `);
+    return rows;
+  } catch (error) {
+    if (!isUndefinedColumnError(error)) throw error;
+    return [];
+  }
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
