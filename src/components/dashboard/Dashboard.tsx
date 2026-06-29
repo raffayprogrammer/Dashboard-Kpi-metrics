@@ -14,9 +14,10 @@ import type { DashboardData } from "@/lib/types";
 
 interface DashboardProps {
   initialData: DashboardData;
+  isMockData: boolean;
 }
 
-export function Dashboard({ initialData }: DashboardProps) {
+export function Dashboard({ initialData, isMockData }: DashboardProps) {
   const [data, setData] = useState<DashboardData>(initialData);
   const [refreshing, setRefreshing] = useState(false);
   // Avoid an SSR/hydration mismatch on the "Last updated" timestamp by
@@ -76,6 +77,13 @@ export function Dashboard({ initialData }: DashboardProps) {
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
       <DashboardHeader lastUpdated={lastUpdated} onRefresh={refresh} refreshing={refreshing} />
+
+      {isMockData && (
+        <div className="mb-6 rounded-lg border border-accent-amber/20 bg-accent-amber/10 px-4 py-2 text-sm text-accent-amber">
+          Showing sample data — set <code className="font-mono">DATABASE_URL</code> to see
+          live numbers.
+        </div>
+      )}
 
       <section className="mb-6">
         <KpiGrid

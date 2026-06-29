@@ -1,4 +1,5 @@
 import { getPool } from "./db";
+import { MOCK_DASHBOARD_DATA } from "./mockData";
 import type {
   AbPerformance,
   AiApproval,
@@ -15,7 +16,12 @@ import type {
 // All queries below are READ ONLY and are used exactly as specified —
 // do not rewrite them.
 
+// Until DATABASE_URL is configured, every query below returns sample data
+// so the dashboard is viewable immediately instead of erroring out.
+export const isMockMode = () => !process.env.DATABASE_URL;
+
 export async function getOverviewMetrics(): Promise<OverviewMetrics> {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.overview;
   const { rows } = await getPool().query<OverviewMetrics>(`
     SELECT
       COUNT(DISTINCT se.contact_id) AS total_sent,
@@ -45,6 +51,7 @@ export async function getOverviewMetrics(): Promise<OverviewMetrics> {
 }
 
 export async function getDailySends(): Promise<DailySend[]> {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.dailySends;
   const { rows } = await getPool().query<DailySend>(`
     SELECT
       DATE(last_sent_at) AS send_date,
@@ -58,6 +65,7 @@ export async function getDailySends(): Promise<DailySend[]> {
 }
 
 export async function getStepDropoff(): Promise<StepDropoff[]> {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.stepDropoff;
   const { rows } = await getPool().query<StepDropoff>(`
     SELECT
       current_step,
@@ -71,6 +79,7 @@ export async function getStepDropoff(): Promise<StepDropoff[]> {
 }
 
 export async function getSegmentPerformance(): Promise<SegmentPerformance[]> {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.segmentPerformance;
   const { rows } = await getPool().query<SegmentPerformance>(`
     SELECT
       c.personalization_payload->>'segment' AS segment,
@@ -91,6 +100,7 @@ export async function getSegmentPerformance(): Promise<SegmentPerformance[]> {
 }
 
 export async function getAbPerformance(): Promise<AbPerformance[]> {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.abPerformance;
   const { rows } = await getPool().query<AbPerformance>(`
     SELECT
       c.personalization_payload->>'variant' AS variant,
@@ -110,6 +120,7 @@ export async function getAbPerformance(): Promise<AbPerformance[]> {
 }
 
 export async function getAiApproval(): Promise<AiApproval> {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.aiApproval;
   const { rows } = await getPool().query<AiApproval>(`
     SELECT
       COUNT(*) AS total_processed,
@@ -129,6 +140,7 @@ export async function getAiApproval(): Promise<AiApproval> {
 }
 
 export async function getStuckLeads(): Promise<StuckLeads> {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.stuckLeads;
   const { rows } = await getPool().query<StuckLeads>(`
     SELECT COUNT(*) AS stuck_count
     FROM contacts c
@@ -143,6 +155,7 @@ export async function getStuckLeads(): Promise<StuckLeads> {
 export async function getReplyIntentBreakdown(): Promise<
   ReplyIntentBreakdown[]
 > {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.replyIntentBreakdown;
   const { rows } = await getPool().query<ReplyIntentBreakdown>(`
     SELECT
       COALESCE(reply_intent, 'no_reply') AS intent,
@@ -156,6 +169,7 @@ export async function getReplyIntentBreakdown(): Promise<
 }
 
 export async function getRecentReplies(): Promise<RecentReply[]> {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.recentReplies;
   const { rows } = await getPool().query<RecentReply>(`
     SELECT
       c.first_name,

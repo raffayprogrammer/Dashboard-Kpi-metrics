@@ -1,5 +1,5 @@
 import { Dashboard } from "@/components/dashboard/Dashboard";
-import { getDashboardData } from "@/lib/queries";
+import { getDashboardData, isMockMode } from "@/lib/queries";
 
 // The dashboard's data depends on a live DB read on every request, so it
 // must never be statically generated at build time.
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   try {
     const initialData = await getDashboardData();
-    return <Dashboard initialData={initialData} />;
+    return <Dashboard initialData={initialData} isMockData={isMockMode()} />;
   } catch (error) {
     console.error("Failed to load initial dashboard data:", error);
     return (
