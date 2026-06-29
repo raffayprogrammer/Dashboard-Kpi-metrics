@@ -1,36 +1,114 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Alfa Analytics — Outreach Intelligence Dashboard
 
-## Getting Started
+A read-only cold email outreach KPI dashboard. It connects directly to the
+Alfa Analytics PostgreSQL database and visualizes sequence performance,
+reply intent, segment/A-B performance, and AI personalisation stats.
 
-First, run the development server:
+**This app never writes to the database.** Every query is a `SELECT`
+against `contacts`, `accounts`, and `sequence_enrollments`.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Tech stack
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Next.js 14 (App Router) + TypeScript
+- Tailwind CSS + shadcn/ui-style primitives
+- Recharts for charts
+- `pg` for a pooled, read-only Postgres connection
+- Deploys to Vercel as serverless functions
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Running locally
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Install dependencies:
 
-## Learn More
+   ```bash
+   npm install
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+2. Copy the env example and fill in your real database credentials:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+   ```bash
+   cp .env.local.example .env.local
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+   Then edit `.env.local`:
 
-## Deploy on Vercel
+   ```
+   DATABASE_URL=postgresql://user:password@host:port/database
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+3. Start the dev server:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+   ```bash
+   npm run dev
+   ```
+
+4. Open [http://localhost:3000](http://localhost:3000).
+
+If `DATABASE_URL` is missing or the database is unreachable, the page
+renders a "Could not connect to the database" message instead of crashing.
+
+## Connecting to Postgres
+
+- Set `DATABASE_URL` to a standard Postgres connection string:
+  `postgresql://<user>:<password>@<host>:<port>/<database>`.
+- For managed providers (Neon, Supabase, RDS, etc.) that require TLS, append
+  `?sslmode=require` — the app automatically enables SSL for any non-`localhost`
+  host (see `src/lib/db.ts`).
+- The connection is pooled via a single `pg.Pool` (max 5 connections),
+  cached on `globalThis` in development so hot-reloading doesn't leak
+  connections, and reused per warm serverless instance in production.
+- The app **only ever issues `SELECT` statements** — it does not create,
+  migrate, or write to any table.
+
+## Deploying to Vercel
+
+1. Push this project to a Git repository and import it in Vercel, or run:
+
+   ```bash
+   npx vercel
+   ```
+
+2. In the Vercel project settings, add an environment variable:
+
+   | Name | Value |
+   |---|---|
+   | `DATABASE_URL` | your production Postgres connection string |
+
+   Add it for the **Production**, **Preview**, and **Development**
+   environments as needed.
+
+3. Deploy. Each route under `src/app/api/metrics/*` is built as its own
+   serverless function (configured in `vercel.json`).
+
+4. Make sure your Postgres instance allows inbound connections from
+   Vercel's serverless IP ranges, or use a provider with a pooled/proxied
+   connection string (e.g. Neon's pooler, Supabase's connection pooler, or
+   RDS Proxy) to avoid exhausting connections under concurrent traffic.
+
+## What each metric means
+
+| Metric | Meaning |
+|---|---|
+| **Total Sent** | Distinct contacts enrolled in the `alfa-cold-outreach` sequence. |
+| **Total Replies** | Distinct contacts with any non-null `replied_at`. Shows "Pending Phase 6" if no replies have been recorded yet. |
+| **Reply Rate** | `Total Replies / Total Sent`, compared against the cold-email industry average of 3.43%. |
+| **Positive Replies** | Distinct contacts whose `reply_intent = 'positive'`. |
+| **Unsubscribes** | Distinct contacts whose `reply_intent = 'unsubscribe'` — sequence stops immediately for these. |
+| **Sequence Completions** | Contacts who reached `current_step = 5` with `status = 'finished'` (finished = still active through the full sequence, not stopped early). |
+| **AI Approval Rate** | Share of contacts where the AI personalisation step (`personalization_payload->>'send'`) approved sending (`'true'`) vs. skipped (`'false'`). Currently powered by **LM Studio Qwen 3.5-9b**. |
+| **Stuck Leads** | Contacts the AI approved to send (`send = 'true'`) with a `valid` email that were never actually enrolled in a sequence — i.e. dropped between approval and outreach. |
+| **Daily Send Volume** | Count of `sequence_enrollments.last_sent_at` per day, last 30 days. |
+| **Sequence Step Drop-off** | How many contacts currently sit at each step (1–5), and how many of those were `stopped` rather than progressing. |
+| **Segment Performance** | Reply rate grouped by `personalization_payload->>'segment'`. |
+| **A/B Variant Performance** | Reply rate grouped by `personalization_payload->>'variant'` ('A' vs 'B'). |
+| **Reply Intent Breakdown** | Distribution of `reply_intent` values (positive / ooo / unsubscribe / neutral / no_reply) across all enrolled contacts. |
+| **Recent Positive Replies** | The 10 most recent replies of any intent, filtered client-side to only show `reply_intent = 'positive'`. |
+
+## Notes on empty / pending data
+
+- If `sequence_enrollments` is empty, every KPI renders as `0` — never an
+  error.
+- If `replied_at` is null for every row (i.e. reply detection hasn't gone
+  live yet), the dashboard shows "Pending Phase 6" labels and empty-state
+  copy instead of misleading zeros.
+- The refresh button (top right) re-fetches all 9 metric endpoints in
+  parallel via `Promise.all` and updates the "Last updated" timestamp.
