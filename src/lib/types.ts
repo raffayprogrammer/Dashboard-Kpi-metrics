@@ -60,6 +60,18 @@ export interface RecentReply {
   replied_at: string;
 }
 
+export interface ClickMetrics {
+  click_count: number;
+  unique_clickers: number;
+  click_rate_pct: number | null;
+}
+
+export interface OpenMetrics {
+  open_count: number;
+  unique_openers: number;
+  open_rate_pct: number | null;
+}
+
 export interface DashboardData {
   overview: OverviewMetrics;
   dailySends: DailySend[];
@@ -70,4 +82,6 @@ export interface DashboardData {
   stuckLeads: StuckLeads;
   replyIntentBreakdown: ReplyIntentBreakdown[];
   recentReplies: RecentReply[];
+  clickMetrics: ClickMetrics;
+  openMetrics: OpenMetrics;
 }

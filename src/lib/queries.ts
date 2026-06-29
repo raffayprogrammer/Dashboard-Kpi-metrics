@@ -3,8 +3,10 @@ import { MOCK_DASHBOARD_DATA } from "./mockData";
 import type {
   AbPerformance,
   AiApproval,
+  ClickMetrics,
   DailySend,
   DashboardData,
+  OpenMetrics,
   OverviewMetrics,
   RecentReply,
   ReplyIntentBreakdown,
@@ -30,6 +32,17 @@ function isUndefinedColumnError(error: unknown): boolean {
     error !== null &&
     "code" in error &&
     (error as { code?: string }).code === "42703"
+  );
+}
+
+// Postgres error code 42P01 = undefined_table. email_link_clicks is a new,
+// separate tracking table that may not exist in every environment yet.
+function isUndefinedTableError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "42P01"
   );
 }
 
@@ -246,6 +259,52 @@ export async function getRecentReplies(): Promise<RecentReply[]> {
   }
 }
 
+// email_link_clicks logs every redirect through /api/track/click. Not part
+// of the original 9 client-specified queries — this is new tracking we
+// added on top, separate from contacts/accounts/sequence_enrollments.
+export async function getClickMetrics(): Promise<ClickMetrics> {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.clickMetrics;
+  try {
+    const { rows } = await getPool().query<ClickMetrics>(`
+      SELECT
+        COUNT(*) AS click_count,
+        COUNT(DISTINCT contact_id) AS unique_clickers,
+        ROUND(
+          100.0 * COUNT(DISTINCT contact_id)
+          / NULLIF((SELECT COUNT(DISTINCT contact_id) FROM sequence_enrollments), 0), 1
+        ) AS click_rate_pct
+      FROM email_link_clicks;
+    `);
+    return rows[0];
+  } catch (error) {
+    if (!isUndefinedTableError(error)) throw error;
+    return { click_count: 0, unique_clickers: 0, click_rate_pct: null };
+  }
+}
+
+// email_opens logs every pixel load through /api/track/open. Same caveats
+// as Apple Mail Privacy Protection apply — this number is a loose signal,
+// not a precise one. Click rate is the more trustworthy metric.
+export async function getOpenMetrics(): Promise<OpenMetrics> {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.openMetrics;
+  try {
+    const { rows } = await getPool().query<OpenMetrics>(`
+      SELECT
+        COUNT(*) AS open_count,
+        COUNT(DISTINCT contact_id) AS unique_openers,
+        ROUND(
+          100.0 * COUNT(DISTINCT contact_id)
+          / NULLIF((SELECT COUNT(DISTINCT contact_id) FROM sequence_enrollments), 0), 1
+        ) AS open_rate_pct
+      FROM email_opens;
+    `);
+    return rows[0];
+  } catch (error) {
+    if (!isUndefinedTableError(error)) throw error;
+    return { open_count: 0, unique_openers: 0, open_rate_pct: null };
+  }
+}
+
 export async function getDashboardData(): Promise<DashboardData> {
   const [
     overview,
@@ -257,6 +316,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     stuckLeads,
     replyIntentBreakdown,
     recentReplies,
+    clickMetrics,
+    openMetrics,
   ] = await Promise.all([
     getOverviewMetrics(),
     getDailySends(),
@@ -267,6 +328,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     getStuckLeads(),
     getReplyIntentBreakdown(),
     getRecentReplies(),
+    getClickMetrics(),
+    getOpenMetrics(),
   ]);
 
   return {
@@ -279,5 +342,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     stuckLeads,
     replyIntentBreakdown,
     recentReplies,
+    clickMetrics,
+    openMetrics,
   };
 }

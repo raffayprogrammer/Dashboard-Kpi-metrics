@@ -64,6 +64,16 @@ export const MOCK_DASHBOARD_DATA: DashboardData = {
   stuckLeads: {
     stuck_count: 7,
   },
+  clickMetrics: {
+    click_count: 41,
+    unique_clickers: 29,
+    click_rate_pct: 11.7,
+  },
+  openMetrics: {
+    open_count: 97,
+    unique_openers: 84,
+    open_rate_pct: 33.9,
+  },
   replyIntentBreakdown: [
     { intent: "no_reply", count: 217 },
     { intent: "neutral", count: 12 },

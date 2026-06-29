@@ -41,6 +41,8 @@ export function Dashboard({ initialData, isMockData }: DashboardProps) {
         stuckLeads,
         replyIntentBreakdown,
         recentReplies,
+        clickMetrics,
+        openMetrics,
       ] = await Promise.all([
         fetch("/api/metrics/overview", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/metrics/daily-sends", { cache: "no-store" }).then((r) => r.json()),
@@ -53,6 +55,8 @@ export function Dashboard({ initialData, isMockData }: DashboardProps) {
           r.json(),
         ),
         fetch("/api/metrics/recent-replies", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/metrics/clicks", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/metrics/opens", { cache: "no-store" }).then((r) => r.json()),
       ]);
 
       setData({
@@ -65,6 +69,8 @@ export function Dashboard({ initialData, isMockData }: DashboardProps) {
         stuckLeads,
         replyIntentBreakdown,
         recentReplies,
+        clickMetrics,
+        openMetrics,
       });
       setLastUpdated(new Date());
     } catch (error) {
@@ -90,6 +96,8 @@ export function Dashboard({ initialData, isMockData }: DashboardProps) {
           overview={data.overview}
           aiApproval={data.aiApproval}
           stuckLeads={data.stuckLeads}
+          clickMetrics={data.clickMetrics}
+          openMetrics={data.openMetrics}
           loading={refreshing}
         />
       </section>

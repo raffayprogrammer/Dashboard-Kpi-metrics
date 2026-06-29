@@ -1,20 +1,35 @@
 import { KpiCard } from "./KpiCard";
 import { INDUSTRY_AVG_REPLY_RATE, PALETTE } from "@/lib/colors";
 import { formatNumber, formatPct } from "@/lib/utils";
-import type { AiApproval, OverviewMetrics, StuckLeads } from "@/lib/types";
+import type {
+  AiApproval,
+  ClickMetrics,
+  OpenMetrics,
+  OverviewMetrics,
+  StuckLeads,
+} from "@/lib/types";
 
 interface KpiGridProps {
   overview: OverviewMetrics;
   aiApproval: AiApproval;
   stuckLeads: StuckLeads;
+  clickMetrics: ClickMetrics;
+  openMetrics: OpenMetrics;
   loading: boolean;
 }
 
-export function KpiGrid({ overview, aiApproval, stuckLeads, loading }: KpiGridProps) {
+export function KpiGrid({
+  overview,
+  aiApproval,
+  stuckLeads,
+  clickMetrics,
+  openMetrics,
+  loading,
+}: KpiGridProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-        {Array.from({ length: 7 }).map((_, i) => (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {Array.from({ length: 9 }).map((_, i) => (
           <KpiCard key={i} label="" value="" status="healthy" loading />
         ))}
       </div>
@@ -26,7 +41,7 @@ export function KpiGrid({ overview, aiApproval, stuckLeads, loading }: KpiGridPr
   const stuckCount = stuckLeads.stuck_count;
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       <KpiCard
         label="Total Sent"
         value={formatNumber(overview.total_sent)}
@@ -104,6 +119,32 @@ export function KpiGrid({ overview, aiApproval, stuckLeads, loading }: KpiGridPr
         accentColor={stuckCount > 0 ? PALETTE.red : PALETTE.green}
         status={stuckCount > 0 ? "critical" : "healthy"}
         footnote={stuckCount > 0 ? "needs attention" : "all clear"}
+      />
+
+      <KpiCard
+        label="Link Clicks"
+        value={formatNumber(clickMetrics.unique_clickers)}
+        accentColor={PALETTE.blue}
+        status={clickMetrics.unique_clickers > 0 ? "healthy" : "concerning"}
+        badge={
+          clickMetrics.click_rate_pct !== null
+            ? { text: formatPct(clickMetrics.click_rate_pct), variant: "blue" }
+            : undefined
+        }
+        footnote={`${formatNumber(clickMetrics.click_count)} total clicks`}
+      />
+
+      <KpiCard
+        label="Email Opens"
+        value={formatNumber(openMetrics.unique_openers)}
+        accentColor={PALETTE.amber}
+        status={openMetrics.unique_openers > 0 ? "healthy" : "concerning"}
+        badge={
+          openMetrics.open_rate_pct !== null
+            ? { text: formatPct(openMetrics.open_rate_pct), variant: "amber" }
+            : undefined
+        }
+        footnote="rough estimate — Apple Mail inflates this"
       />
     </div>
   );
