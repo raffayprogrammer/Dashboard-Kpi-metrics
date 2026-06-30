@@ -3,6 +3,7 @@ import { INDUSTRY_AVG_REPLY_RATE, PALETTE } from "@/lib/colors";
 import { formatNumber, formatPct } from "@/lib/utils";
 import type {
   AiApproval,
+  BounceMetrics,
   ClickMetrics,
   OpenMetrics,
   OverviewMetrics,
@@ -15,6 +16,7 @@ interface KpiGridProps {
   stuckLeads: StuckLeads;
   clickMetrics: ClickMetrics;
   openMetrics: OpenMetrics;
+  bounceMetrics: BounceMetrics;
   loading: boolean;
 }
 
@@ -24,12 +26,13 @@ export function KpiGrid({
   stuckLeads,
   clickMetrics,
   openMetrics,
+  bounceMetrics,
   loading,
 }: KpiGridProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 9 }).map((_, i) => (
+        {Array.from({ length: 10 }).map((_, i) => (
           <KpiCard key={i} label="" value="" status="healthy" loading />
         ))}
       </div>
@@ -145,6 +148,19 @@ export function KpiGrid({
             : undefined
         }
         footnote="rough estimate — Apple Mail inflates this"
+      />
+
+      <KpiCard
+        label="Block Rate"
+        value={formatNumber(bounceMetrics.spam_block_count)}
+        accentColor={bounceMetrics.spam_block_count > 0 ? PALETTE.red : PALETTE.green}
+        status={bounceMetrics.spam_block_count > 0 ? "critical" : "healthy"}
+        badge={
+          bounceMetrics.block_rate_pct !== null
+            ? { text: formatPct(bounceMetrics.block_rate_pct), variant: "red" }
+            : undefined
+        }
+        footnote="proxy metric — hard bounces only, not spam-folder placement"
       />
     </div>
   );

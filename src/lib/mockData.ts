@@ -74,6 +74,12 @@ export const MOCK_DASHBOARD_DATA: DashboardData = {
     unique_openers: 84,
     open_rate_pct: 33.9,
   },
+  bounceMetrics: {
+    spam_block_count: 3,
+    invalid_address_count: 8,
+    total_bounce_count: 11,
+    block_rate_pct: 1.2,
+  },
   replyIntentBreakdown: [
     { intent: "no_reply", count: 217 },
     { intent: "neutral", count: 12 },

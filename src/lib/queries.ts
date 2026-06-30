@@ -3,6 +3,7 @@ import { MOCK_DASHBOARD_DATA } from "./mockData";
 import type {
   AbPerformance,
   AiApproval,
+  BounceMetrics,
   ClickMetrics,
   DailySend,
   DashboardData,
@@ -305,6 +306,36 @@ export async function getOpenMetrics(): Promise<OpenMetrics> {
   }
 }
 
+// email_bounces logs hard-rejection NDRs caught by Phase 6's bounce
+// classification — a proxy for sender reputation, not real spam-folder
+// placement (which generates no bounce and is invisible without Google
+// Postmaster Tools on a domain we control).
+export async function getBounceMetrics(): Promise<BounceMetrics> {
+  if (isMockMode()) return MOCK_DASHBOARD_DATA.bounceMetrics;
+  try {
+    const { rows } = await getPool().query<BounceMetrics>(`
+      SELECT
+        COUNT(CASE WHEN bounce_type = 'spam_block' THEN 1 END) AS spam_block_count,
+        COUNT(CASE WHEN bounce_type = 'invalid_address' THEN 1 END) AS invalid_address_count,
+        COUNT(*) AS total_bounce_count,
+        ROUND(
+          100.0 * COUNT(CASE WHEN bounce_type = 'spam_block' THEN 1 END)
+          / NULLIF((SELECT COUNT(DISTINCT contact_id) FROM sequence_enrollments), 0), 2
+        ) AS block_rate_pct
+      FROM email_bounces;
+    `);
+    return rows[0];
+  } catch (error) {
+    if (!isUndefinedTableError(error)) throw error;
+    return {
+      spam_block_count: 0,
+      invalid_address_count: 0,
+      total_bounce_count: 0,
+      block_rate_pct: null,
+    };
+  }
+}
+
 export async function getDashboardData(): Promise<DashboardData> {
   const [
     overview,
@@ -318,6 +349,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     recentReplies,
     clickMetrics,
     openMetrics,
+    bounceMetrics,
   ] = await Promise.all([
     getOverviewMetrics(),
     getDailySends(),
@@ -330,6 +362,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     getRecentReplies(),
     getClickMetrics(),
     getOpenMetrics(),
+    getBounceMetrics(),
   ]);
 
   return {
@@ -344,5 +377,6 @@ export async function getDashboardData(): Promise<DashboardData> {
     recentReplies,
     clickMetrics,
     openMetrics,
+    bounceMetrics,
   };
 }

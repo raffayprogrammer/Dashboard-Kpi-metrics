@@ -43,6 +43,7 @@ export function Dashboard({ initialData, isMockData }: DashboardProps) {
         recentReplies,
         clickMetrics,
         openMetrics,
+        bounceMetrics,
       ] = await Promise.all([
         fetch("/api/metrics/overview", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/metrics/daily-sends", { cache: "no-store" }).then((r) => r.json()),
@@ -57,6 +58,7 @@ export function Dashboard({ initialData, isMockData }: DashboardProps) {
         fetch("/api/metrics/recent-replies", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/metrics/clicks", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/metrics/opens", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/metrics/bounces", { cache: "no-store" }).then((r) => r.json()),
       ]);
 
       setData({
@@ -71,6 +73,7 @@ export function Dashboard({ initialData, isMockData }: DashboardProps) {
         recentReplies,
         clickMetrics,
         openMetrics,
+        bounceMetrics,
       });
       setLastUpdated(new Date());
     } catch (error) {
@@ -98,6 +101,7 @@ export function Dashboard({ initialData, isMockData }: DashboardProps) {
           stuckLeads={data.stuckLeads}
           clickMetrics={data.clickMetrics}
           openMetrics={data.openMetrics}
+          bounceMetrics={data.bounceMetrics}
           loading={refreshing}
         />
       </section>

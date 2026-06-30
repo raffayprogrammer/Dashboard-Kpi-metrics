@@ -72,6 +72,13 @@ export interface OpenMetrics {
   open_rate_pct: number | null;
 }
 
+export interface BounceMetrics {
+  spam_block_count: number;
+  invalid_address_count: number;
+  total_bounce_count: number;
+  block_rate_pct: number | null;
+}
+
 export interface DashboardData {
   overview: OverviewMetrics;
   dailySends: DailySend[];
@@ -84,4 +91,5 @@ export interface DashboardData {
   recentReplies: RecentReply[];
   clickMetrics: ClickMetrics;
   openMetrics: OpenMetrics;
+  bounceMetrics: BounceMetrics;
 }
