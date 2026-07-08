@@ -151,16 +151,16 @@ export function KpiGrid({
       />
 
       <KpiCard
-        label="Block Rate"
-        value={formatNumber(bounceMetrics.spam_block_count)}
-        accentColor={bounceMetrics.spam_block_count > 0 ? PALETTE.red : PALETTE.green}
-        status={bounceMetrics.spam_block_count > 0 ? "critical" : "healthy"}
+        label="Hard Bounces"
+        value={formatNumber(bounceMetrics.total_bounce_count)}
+        accentColor={bounceMetrics.total_bounce_count > 0 ? PALETTE.red : PALETTE.green}
+        status={bounceMetrics.total_bounce_count > 0 ? "critical" : "healthy"}
         badge={
-          bounceMetrics.block_rate_pct !== null
-            ? { text: formatPct(bounceMetrics.block_rate_pct), variant: "red" }
+          bounceMetrics.spam_block_count > 0
+            ? { text: `${bounceMetrics.spam_block_count} spam blocked`, variant: "red" }
             : undefined
         }
-        footnote="proxy metric — hard bounces only, not spam-folder placement"
+        footnote={`${formatNumber(bounceMetrics.invalid_address_count)} invalid addr · ${formatNumber(bounceMetrics.spam_block_count)} spam blocked`}
       />
     </div>
   );
