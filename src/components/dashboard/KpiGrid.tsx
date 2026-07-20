@@ -47,7 +47,7 @@ export function KpiGrid({
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       <KpiCard
         label="Total Sent"
-        definition="Unique contacts who received at least one email in the outreach sequence."
+        definition="Unique contacts emailed so far"
         value={formatNumber(overview.total_sent)}
         accentColor={PALETTE.blue}
         status={hasSends ? "healthy" : "concerning"}
@@ -56,7 +56,7 @@ export function KpiGrid({
 
       <KpiCard
         label="Total Replies"
-        definition="Contacts who replied to any email in the sequence, regardless of intent."
+        definition="Contacts who wrote back (any intent)"
         value={formatNumber(overview.total_replies)}
         status={
           repliesPendingPhase6
@@ -77,7 +77,7 @@ export function KpiGrid({
 
       <KpiCard
         label="Positive Replies"
-        definition="Replies classified as interested, requesting a call, or asking for more info — warm leads."
+        definition="Warm / interested leads"
         value={formatNumber(overview.positive_replies)}
         accentColor={PALETTE.green}
         status={overview.positive_replies > 0 ? "healthy" : "concerning"}
@@ -92,7 +92,7 @@ export function KpiGrid({
 
       <KpiCard
         label="Unsubscribes"
-        definition="Contacts who asked to be removed from outreach. They are stopped immediately and never emailed again."
+        definition="Asked to be removed — stopped immediately"
         value={formatNumber(overview.unsubscribes)}
         accentColor={PALETTE.red}
         status={overview.unsubscribes === 0 ? "healthy" : "concerning"}
@@ -101,7 +101,7 @@ export function KpiGrid({
 
       <KpiCard
         label="Sequence Completions"
-        definition="Contacts who completed all 5 steps of the email sequence without replying or unsubscribing."
+        definition="Received all 5 emails in the sequence"
         value={formatNumber(overview.completed_sequence)}
         status={overview.completed_sequence > 0 ? "healthy" : "concerning"}
         footnote="reached step 5"
@@ -109,7 +109,7 @@ export function KpiGrid({
 
       <KpiCard
         label="AI Approval Rate"
-        definition="% of contacts whose AI-generated personalized email was approved (send=true) vs skipped due to low confidence."
+        definition="% of AI-written emails approved to send"
         value={formatPct(aiApproval.approval_rate_pct)}
         accentColor={PALETTE.amber}
         status={
@@ -124,7 +124,7 @@ export function KpiGrid({
 
       <KpiCard
         label="Stuck Leads"
-        definition="Valid contacts with an approved AI email who haven't been enrolled in the sequence yet — they need to be sent."
+        definition="Approved contacts not yet sent — needs action"
         value={formatNumber(stuckCount)}
         accentColor={stuckCount > 0 ? PALETTE.red : PALETTE.green}
         status={stuckCount > 0 ? "critical" : "healthy"}
@@ -133,7 +133,7 @@ export function KpiGrid({
 
       <KpiCard
         label="Link Clicks"
-        definition="Unique contacts who clicked a tracked link (website or portfolio) in any email. More reliable than opens."
+        definition="Unique contacts who clicked a link in any email"
         value={formatNumber(clickMetrics.unique_clickers)}
         accentColor={PALETTE.blue}
         status={clickMetrics.unique_clickers > 0 ? "healthy" : "concerning"}
@@ -147,7 +147,7 @@ export function KpiGrid({
 
       <KpiCard
         label="Email Opens"
-        definition="Unique contacts who opened at least one email. Caution: Apple Mail Privacy Protection auto-opens emails, inflating this number."
+        definition="Unique openers (est. — Apple Mail inflates this)"
         value={formatNumber(openMetrics.unique_openers)}
         accentColor={PALETTE.amber}
         status={openMetrics.unique_openers > 0 ? "healthy" : "concerning"}
@@ -161,7 +161,7 @@ export function KpiGrid({
 
       <KpiCard
         label="Hard Bounces"
-        definition="Emails permanently undeliverable — either the address doesn't exist (invalid) or our domain was blocked by their spam filter."
+        definition="Permanently undeliverable — bad address or spam block"
         value={formatNumber(bounceMetrics.total_bounce_count)}
         accentColor={bounceMetrics.total_bounce_count > 0 ? PALETTE.red : PALETTE.green}
         status={bounceMetrics.total_bounce_count > 0 ? "critical" : "healthy"}
