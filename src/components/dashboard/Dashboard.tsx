@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DashboardHeader } from "./DashboardHeader";
+import { FilterBar, type DashboardFilters } from "./FilterBar";
 import { KpiGrid } from "./KpiGrid";
 import { DailySendsChart } from "./DailySendsChart";
 import { ReplyIntentDonut } from "./ReplyIntentDonut";
@@ -17,19 +18,33 @@ interface DashboardProps {
   isMockData: boolean;
 }
 
+const EMPTY_FILTERS: DashboardFilters = { from: "", to: "", segment: "" };
+
+function buildQs(filters: DashboardFilters): string {
+  const p = new URLSearchParams();
+  if (filters.from) p.set("from", filters.from);
+  if (filters.to) p.set("to", filters.to);
+  if (filters.segment) p.set("segment", filters.segment);
+  const qs = p.toString();
+  return qs ? `?${qs}` : "";
+}
+
 export function Dashboard({ initialData, isMockData }: DashboardProps) {
   const [data, setData] = useState<DashboardData>(initialData);
   const [refreshing, setRefreshing] = useState(false);
+  const [filters, setFilters] = useState<DashboardFilters>(EMPTY_FILTERS);
   // Avoid an SSR/hydration mismatch on the "Last updated" timestamp by
   // setting it only after mount.
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const isFirstMount = useRef(true);
 
   useEffect(() => {
     setLastUpdated(new Date());
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (activeFilters: DashboardFilters = EMPTY_FILTERS) => {
     setRefreshing(true);
+    const qs = buildQs(activeFilters);
     try {
       const [
         overview,
@@ -45,17 +60,17 @@ export function Dashboard({ initialData, isMockData }: DashboardProps) {
         openMetrics,
         bounceMetrics,
       ] = await Promise.all([
-        fetch("/api/metrics/overview", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/metrics/daily-sends", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/metrics/step-dropoff", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/metrics/segment-performance", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/metrics/ab-performance", { cache: "no-store" }).then((r) => r.json()),
+        fetch(`/api/metrics/overview${qs}`, { cache: "no-store" }).then((r) => r.json()),
+        fetch(`/api/metrics/daily-sends${qs}`, { cache: "no-store" }).then((r) => r.json()),
+        fetch(`/api/metrics/step-dropoff${qs}`, { cache: "no-store" }).then((r) => r.json()),
+        fetch(`/api/metrics/segment-performance${qs}`, { cache: "no-store" }).then((r) => r.json()),
+        fetch(`/api/metrics/ab-performance${qs}`, { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/metrics/ai-approval", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/metrics/stuck-leads", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/metrics/reply-intent-breakdown", { cache: "no-store" }).then((r) =>
+        fetch(`/api/metrics/reply-intent-breakdown${qs}`, { cache: "no-store" }).then((r) =>
           r.json(),
         ),
-        fetch("/api/metrics/recent-replies", { cache: "no-store" }).then((r) => r.json()),
+        fetch(`/api/metrics/recent-replies${qs}`, { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/metrics/clicks", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/metrics/opens", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/metrics/bounces", { cache: "no-store" }).then((r) => r.json()),
@@ -83,9 +98,19 @@ export function Dashboard({ initialData, isMockData }: DashboardProps) {
     }
   }, []);
 
+  // Re-fetch whenever filters change (skip the very first render — initialData already loaded)
+  useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
+    refresh(filters);
+  }, [filters, refresh]);
+
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
-      <DashboardHeader lastUpdated={lastUpdated} onRefresh={refresh} refreshing={refreshing} />
+      <DashboardHeader lastUpdated={lastUpdated} onRefresh={() => refresh(filters)} refreshing={refreshing} />
+      <FilterBar filters={filters} onChange={setFilters} />
 
       {isMockData && (
         <div className="mb-6 rounded-lg border border-accent-amber/20 bg-accent-amber/10 px-4 py-2 text-sm text-accent-amber">

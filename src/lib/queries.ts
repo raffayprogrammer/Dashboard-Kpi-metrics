@@ -16,6 +16,27 @@ import type {
   StuckLeads,
 } from "./types";
 
+export interface QueryFilters {
+  from?: string;   // YYYY-MM-DD
+  to?: string;     // YYYY-MM-DD
+  segment?: string;
+}
+
+function buildDateSegmentWhere(
+  filters: QueryFilters | undefined,
+  dateCol: string,
+  segmentExpr: string,
+  startIdx = 1,
+): { clause: string; params: string[] } {
+  const parts: string[] = [];
+  const params: string[] = [];
+  let idx = startIdx;
+  if (filters?.from) { parts.push(`DATE(${dateCol}) >= $${idx++}`); params.push(filters.from); }
+  if (filters?.to)   { parts.push(`DATE(${dateCol}) <= $${idx++}`); params.push(filters.to); }
+  if (filters?.segment) { parts.push(`${segmentExpr} = $${idx++}`); params.push(filters.segment); }
+  return { clause: parts.length ? " AND " + parts.join(" AND ") : "", params };
+}
+
 // All queries below are READ ONLY and are used exactly as specified —
 // do not rewrite them.
 
@@ -47,8 +68,9 @@ function isUndefinedTableError(error: unknown): boolean {
   );
 }
 
-export async function getOverviewMetrics(): Promise<OverviewMetrics> {
+export async function getOverviewMetrics(filters?: QueryFilters): Promise<OverviewMetrics> {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.overview;
+  const { clause, params } = buildDateSegmentWhere(filters, "se.last_sent_at", "c.personalization_payload->>'segment'");
   try {
     const { rows } = await getPool().query<OverviewMetrics>(`
       SELECT
@@ -73,13 +95,12 @@ export async function getOverviewMetrics(): Promise<OverviewMetrics> {
             THEN c.contact_id END), 0), 2
         ) AS positive_rate_pct
       FROM sequence_enrollments se
-      JOIN contacts c ON c.contact_id = se.contact_id;
-    `);
+      JOIN contacts c ON c.contact_id = se.contact_id
+      WHERE 1=1${clause};
+    `, params);
     return rows[0];
   } catch (error) {
     if (!isUndefinedColumnError(error)) throw error;
-    // Reply columns don't exist yet — total_sent/completed_sequence don't
-    // depend on them, so recover those from sequence_enrollments alone.
     const { rows } = await getPool().query<{
       total_sent: number;
       completed_sequence: number;
@@ -102,36 +123,46 @@ export async function getOverviewMetrics(): Promise<OverviewMetrics> {
   }
 }
 
-export async function getDailySends(): Promise<DailySend[]> {
+export async function getDailySends(filters?: QueryFilters): Promise<DailySend[]> {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.dailySends;
+  const parts: string[] = ["last_sent_at >= NOW() - INTERVAL '30 days'"];
+  const params: string[] = [];
+  let idx = 1;
+  if (filters?.from) { parts.push(`DATE(last_sent_at) >= $${idx++}`); params.push(filters.from); }
+  if (filters?.to)   { parts.push(`DATE(last_sent_at) <= $${idx++}`); params.push(filters.to); }
   const { rows } = await getPool().query<DailySend>(`
     SELECT
       DATE(last_sent_at) AS send_date,
       COUNT(*) AS emails_sent
     FROM sequence_enrollments
-    WHERE last_sent_at >= NOW() - INTERVAL '30 days'
+    WHERE ${parts.join(" AND ")}
     GROUP BY DATE(last_sent_at)
     ORDER BY send_date ASC;
-  `);
+  `, params);
   return rows;
 }
 
-export async function getStepDropoff(): Promise<StepDropoff[]> {
+export async function getStepDropoff(filters?: QueryFilters): Promise<StepDropoff[]> {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.stepDropoff;
-  const { rows } = await getPool().query<StepDropoff>(`
-    SELECT
-      current_step,
-      COUNT(*) AS contacts,
-      COUNT(CASE WHEN status = 'stopped' THEN 1 END) AS stopped_at_step
-    FROM sequence_enrollments
-    GROUP BY current_step
-    ORDER BY current_step ASC;
-  `);
+  const { clause, params } = buildDateSegmentWhere(filters, "se.last_sent_at", "c.personalization_payload->>'segment'");
+  const needsJoin = clause.includes("segment");
+  const { rows } = await getPool().query<StepDropoff>(
+    needsJoin
+      ? `SELECT se.current_step, COUNT(*) AS contacts,
+           COUNT(CASE WHEN se.status = 'stopped' THEN 1 END) AS stopped_at_step
+         FROM sequence_enrollments se JOIN contacts c ON c.contact_id = se.contact_id
+         WHERE 1=1${clause} GROUP BY se.current_step ORDER BY se.current_step ASC;`
+      : `SELECT current_step, COUNT(*) AS contacts,
+           COUNT(CASE WHEN status = 'stopped' THEN 1 END) AS stopped_at_step
+         FROM sequence_enrollments WHERE 1=1${clause.replace(/se\./g, "")} GROUP BY current_step ORDER BY current_step ASC;`,
+    params,
+  );
   return rows;
 }
 
-export async function getSegmentPerformance(): Promise<SegmentPerformance[]> {
+export async function getSegmentPerformance(filters?: QueryFilters): Promise<SegmentPerformance[]> {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.segmentPerformance;
+  const { clause, params } = buildDateSegmentWhere(filters, "se.last_sent_at", "c.personalization_payload->>'segment'");
   try {
     const { rows } = await getPool().query<SegmentPerformance>(`
       SELECT
@@ -145,10 +176,10 @@ export async function getSegmentPerformance(): Promise<SegmentPerformance[]> {
         COUNT(CASE WHEN c.reply_intent = 'positive' THEN 1 END) AS positive
       FROM contacts c
       JOIN sequence_enrollments se ON se.contact_id = c.contact_id
-      WHERE c.personalization_payload IS NOT NULL
+      WHERE c.personalization_payload IS NOT NULL${clause}
       GROUP BY segment
       ORDER BY reply_rate_pct DESC NULLS LAST;
-    `);
+    `, params);
     return rows;
   } catch (error) {
     if (!isUndefinedColumnError(error)) throw error;
@@ -156,8 +187,9 @@ export async function getSegmentPerformance(): Promise<SegmentPerformance[]> {
   }
 }
 
-export async function getAbPerformance(): Promise<AbPerformance[]> {
+export async function getAbPerformance(filters?: QueryFilters): Promise<AbPerformance[]> {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.abPerformance;
+  const { clause, params } = buildDateSegmentWhere(filters, "se.last_sent_at", "c.personalization_payload->>'segment'");
   try {
     const { rows } = await getPool().query<AbPerformance>(`
       SELECT
@@ -170,10 +202,10 @@ export async function getAbPerformance(): Promise<AbPerformance[]> {
         ) AS reply_rate_pct
       FROM contacts c
       JOIN sequence_enrollments se ON se.contact_id = c.contact_id
-      WHERE c.personalization_payload->>'variant' IS NOT NULL
+      WHERE c.personalization_payload->>'variant' IS NOT NULL${clause}
       GROUP BY variant
       ORDER BY variant;
-    `);
+    `, params);
     return rows;
   } catch (error) {
     if (!isUndefinedColumnError(error)) throw error;
@@ -214,10 +246,11 @@ export async function getStuckLeads(): Promise<StuckLeads> {
   return rows[0];
 }
 
-export async function getReplyIntentBreakdown(): Promise<
+export async function getReplyIntentBreakdown(filters?: QueryFilters): Promise<
   ReplyIntentBreakdown[]
 > {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.replyIntentBreakdown;
+  const { clause, params } = buildDateSegmentWhere(filters, "se.last_sent_at", "c.personalization_payload->>'segment'");
   try {
     const { rows } = await getPool().query<ReplyIntentBreakdown>(`
       SELECT
@@ -225,9 +258,10 @@ export async function getReplyIntentBreakdown(): Promise<
         COUNT(*) AS count
       FROM contacts c
       JOIN sequence_enrollments se ON se.contact_id = c.contact_id
+      WHERE 1=1${clause}
       GROUP BY reply_intent
       ORDER BY count DESC;
-    `);
+    `, params);
     return rows;
   } catch (error) {
     if (!isUndefinedColumnError(error)) throw error;
@@ -235,8 +269,9 @@ export async function getReplyIntentBreakdown(): Promise<
   }
 }
 
-export async function getRecentReplies(): Promise<RecentReply[]> {
+export async function getRecentReplies(filters?: QueryFilters): Promise<RecentReply[]> {
   if (isMockMode()) return MOCK_DASHBOARD_DATA.recentReplies;
+  const { clause, params } = buildDateSegmentWhere(filters, "se.last_sent_at", "c.personalization_payload->>'segment'");
   try {
     const { rows } = await getPool().query<RecentReply>(`
       SELECT
@@ -249,10 +284,11 @@ export async function getRecentReplies(): Promise<RecentReply[]> {
         c.replied_at
       FROM contacts c
       JOIN accounts a ON a.account_id = c.account_id
-      WHERE c.replied_at IS NOT NULL
+      JOIN sequence_enrollments se ON se.contact_id = c.contact_id
+      WHERE c.replied_at IS NOT NULL${clause}
       ORDER BY c.replied_at DESC
       LIMIT 10;
-    `);
+    `, params);
     return rows;
   } catch (error) {
     if (!isUndefinedColumnError(error)) throw error;
@@ -334,6 +370,18 @@ export async function getBounceMetrics(): Promise<BounceMetrics> {
       block_rate_pct: null,
     };
   }
+}
+
+export async function getSegments(): Promise<string[]> {
+  if (isMockMode()) return [];
+  const { rows } = await getPool().query<{ segment: string }>(`
+    SELECT DISTINCT personalization_payload->>'segment' AS segment
+    FROM contacts
+    WHERE personalization_payload->>'segment' IS NOT NULL
+      AND personalization_payload->>'segment' != ''
+    ORDER BY segment ASC;
+  `);
+  return rows.map((r) => r.segment);
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
